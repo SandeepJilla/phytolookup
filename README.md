@@ -13,5 +13,8 @@ A single-page web application to look up phytoplankton species and retrieve Darw
 ## Usage
 Open `index.html` in a web browser. No build step or server required.
 
+## WebApp
+https://phytolookup.vercel.app/
+
 ## API
 Uses the [WoRMS REST API](https://www.marinespecies.org/rest/): `GET /AphiaRecordsByName/{name}?like=true&marine_only=true`
