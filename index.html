@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Phytoplankton Species Lookup – WoRMS Darwin Core</title>
+  <style>
+    /* ── CSS Custom Properties ──────────────────────────────────────── */
+    :root {
+      --color-primary:       #0a5c7a;
+      --color-primary-light: #1a8aad;
+      --color-accent:        #2ec4b6;
+      --color-warning:       #f4a261;
+      --color-success:       #2a9d8f;
+      --color-error:         #e63946;
+      --color-bg:            #f0f6fa;
+      --color-surface:       #ffffff;
+      --color-border:        #c8d8e4;
+      --color-text:          #1e2d3d;
+      --color-muted:         #5a7080;
+      --radius:              8px;
+      --shadow:              0 2px 14px rgba(10,92,122,0.10);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--color-bg);
+      color: var(--color-text);
+      min-height: 100vh;
+      padding: 0 0 60px;
+    }
+
+    /* ── App Header ──────────────────────────────────────────────────── */
+    .app-header {
+      background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-light) 100%);
+      color: #fff;
+      padding: 24px 32px 20px;
+      display: flex;
+      align-items: flex-end;
+      gap: 16px;
+    }
+    .app-header-icon {
+      font-size: 2.4rem;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .app-header h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+    .app-subtitle {
+      font-size: 0.85rem;
+      opacity: 0.82;
+      margin-top: 3px;
+    }
+
+    /* ── Main container ──────────────────────────────────────────────── */
+    main {
+      max-width: 1160px;
+      margin: 0 auto;
+      padding: 28px 24px 0;
+    }
+
+    /* ── Search Card ─────────────────────────────────────────────────── */
+    .search-card {
+      background: var(--color-surface);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 28px 32px 20px;
+      margin-bottom: 24px;
+    }
+    .search-card label {
+      display: block;
+      font-weight: 600;
+      font-size: 0.9rem;
+      color: var(--color-primary);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .input-row {
+      display: flex;
+      gap: 10px;
+    }
+    #species-input {
+      flex: 1;
+      font-size: 1rem;
+      padding: 10px 14px;
+      border: 2px solid var(--color-border);
+      border-radius: var(--radius);
+      outline: none;
+      transition: border-color 0.2s;
+      color: var(--color-text);
+      background: #fff;
+    }
+    #species-input:focus { border-color: var(--color-primary-light); }
+    #search-btn {
+      padding: 10px 26px;
+      background: var(--color-primary);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, opacity 0.2s;
+      white-space: nowrap;
+    }
+    #search-btn:hover:not(:disabled) { background: var(--color-primary-light); }
+    #search-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .input-hint {
+      font-size: 0.78rem;
+      color: var(--color-muted);
+      margin-top: 7px;
+    }
+
+    /* ── Status Bar ──────────────────────────────────────────────────── */
+    #status-bar {
+      min-height: 20px;
+      margin-top: 14px;
+    }
+    .error-msg {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #fff0f1;
+      border: 1px solid #f5c5c8;
+      border-radius: var(--radius);
+      padding: 10px 14px;
+      color: var(--color-error);
+      font-size: 0.9rem;
+    }
+    .loading-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--color-primary);
+      font-size: 0.9rem;
+    }
+    .spinner {
+      width: 20px;
+      height: 20px;
+      border: 3px solid var(--color-border);
+      border-top-color: var(--color-primary);
+      border-radius: 50%;
+      animation: spin 0.75s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Results Zone ────────────────────────────────────────────────── */
+    #results-zone {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+    #results-zone[hidden] { display: none !important; }
+
+    @media (max-width: 720px) {
+      #results-zone { grid-template-columns: 1fr; }
+    }
+
+    /* ── Panel shared ────────────────────────────────────────────────── */
+    .panel {
+      background: var(--color-surface);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--color-border);
+      background: #f7fbfd;
+    }
+    .panel-header h2 {
+      font-size: 0.88rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--color-primary);
+    }
+
+    /* ── Result List ─────────────────────────────────────────────────── */
+    #list-panel { max-height: 600px; display: flex; flex-direction: column; }
+    #result-list {
+      list-style: none;
+      overflow-y: auto;
+      flex: 1;
+    }
+    .result-item {
+      padding: 12px 18px;
+      cursor: pointer;
+      border-bottom: 1px solid var(--color-border);
+      transition: background 0.15s;
+    }
+    .result-item:last-child { border-bottom: none; }
+    .result-item:hover { background: #edf5fa; }
+    .result-item.selected { background: #deeef7; border-left: 4px solid var(--color-primary-light); }
+    .result-item.selected { padding-left: 14px; }
+    .result-sci-name {
+      font-style: italic;
+      font-weight: 600;
+      font-size: 0.92rem;
+      color: var(--color-text);
+    }
+    .result-meta {
+      font-size: 0.77rem;
+      color: var(--color-muted);
+      margin-top: 2px;
+    }
+    .result-badges { display: flex; gap: 5px; margin-top: 5px; flex-wrap: wrap; }
+
+    /* ── Status Badge ────────────────────────────────────────────────── */
+    .badge {
+      display: inline-block;
+      font-size: 0.68rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 20px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .badge-accepted   { background: #d1f0eb; color: #1a6b62; }
+    .badge-unaccepted { background: #fde8d0; color: #9a5020; }
+    .badge-synonym    { background: #fde8d0; color: #9a5020; }
+    .badge-rank       { background: #e2eff7; color: #1a4d6e; }
+    .badge-nomen      { background: #ece2f5; color: #5a2d82; }
+
+    /* ── Export Button ───────────────────────────────────────────────── */
+    #export-btn {
+      font-size: 0.78rem;
+      padding: 5px 12px;
+      background: var(--color-accent);
+      color: #fff;
+      border: none;
+      border-radius: 20px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+    #export-btn:hover { background: #22a99d; }
+    #export-btn[hidden] { display: none; }
+
+    /* ── Detail Panel ────────────────────────────────────────────────── */
+    #detail-panel[hidden] { display: none; }
+    #empty-detail {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 60px 20px;
+      color: var(--color-muted);
+      font-size: 0.9rem;
+      background: var(--color-surface);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+    #empty-detail[hidden] { display: none; }
+
+    .detail-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px 22px 14px;
+      border-bottom: 1px solid var(--color-border);
+      background: #f7fbfd;
+    }
+    #detail-name {
+      font-style: italic;
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--color-primary);
+      line-height: 1.2;
+    }
+    .authorship {
+      font-size: 0.83rem;
+      color: var(--color-muted);
+      margin-top: 3px;
+    }
+    .btn-worms {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: var(--color-primary);
+      color: #fff;
+      text-decoration: none;
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 7px 14px;
+      border-radius: 20px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: background 0.2s;
+    }
+    .btn-worms:hover { background: var(--color-primary-light); }
+
+    /* ── Taxonomy Table ──────────────────────────────────────────────── */
+    .taxonomy-table {
+      padding: 16px 22px 20px;
+      display: grid;
+      grid-template-columns: max-content 1fr;
+      gap: 0;
+    }
+    .taxonomy-table dt {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--color-muted);
+      padding: 7px 16px 7px 0;
+      border-bottom: 1px solid #edf2f5;
+      display: flex;
+      align-items: center;
+    }
+    .taxonomy-table dd {
+      font-size: 0.88rem;
+      color: var(--color-text);
+      padding: 7px 0;
+      border-bottom: 1px solid #edf2f5;
+      word-break: break-all;
+    }
+    .taxonomy-table dt:last-of-type,
+    .taxonomy-table dd:last-of-type { border-bottom: none; }
+    .dd-italic { font-style: italic; }
+    .dd-link { color: var(--color-primary-light); text-decoration: underline; }
+    .dd-empty { color: var(--color-muted); font-style: italic; font-size: 0.8rem; }
+    .synonym-note {
+      background: #fff7ee;
+      border: 1px solid #f4d4a8;
+      border-radius: var(--radius);
+      padding: 10px 14px;
+      margin: 0 22px 16px;
+      font-size: 0.83rem;
+      color: #7a4a10;
+    }
+    .synonym-note a { color: inherit; font-weight: 600; }
+  </style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="app-header-icon">🔬</div>
+  <div>
+    <h1>Phytoplankton Species Lookup</h1>
+    <p class="app-subtitle">Retrieve Darwin Core taxonomic data from WoRMS (World Register of Marine Species)</p>
+  </div>
+</header>
+
+<main>
+  <!-- Search -->
+  <section class="search-card" aria-label="Species search">
+    <form id="search-form">
+      <label for="species-input">Species or genus name</label>
+      <div class="input-row">
+        <input id="species-input" type="text" placeholder="e.g. Karenia brevis, Alexandrium" autocomplete="off" spellcheck="false" />
+        <button type="submit" id="search-btn">Search WoRMS</button>
+      </div>
+      <p class="input-hint">Partial/fuzzy name search enabled · Marine species only · Searches WoRMS REST API</p>
+    </form>
+    <div id="status-bar" role="status" aria-live="polite"></div>
+  </section>
+
+  <!-- Results -->
+  <section id="results-zone" hidden aria-label="Search results">
+
+    <!-- Left: list -->
+    <aside id="list-panel" class="panel" aria-label="Result list">
+      <div class="panel-header">
+        <h2 id="result-count-label">Results</h2>
+        <button id="export-btn" hidden aria-label="Export all results as CSV">⬇ Export CSV</button>
+      </div>
+      <ul id="result-list" role="listbox" aria-label="Species matches"></ul>
+    </aside>
+
+    <!-- Right: detail or placeholder -->
+    <article id="detail-panel" class="panel" hidden aria-label="Species detail">
+      <div class="detail-header">
+        <div>
+          <h2 id="detail-name"></h2>
+          <p id="detail-authorship" class="authorship"></p>
+        </div>
+        <a id="worms-link" href="#" target="_blank" rel="noopener noreferrer" class="btn-worms">
+          ↗ View on WoRMS
+        </a>
+      </div>
+      <div id="synonym-note" class="synonym-note" hidden></div>
+      <dl id="taxonomy-table" class="taxonomy-table" aria-label="Darwin Core fields"></dl>
+    </article>
+
+    <div id="empty-detail" role="note" aria-label="No selection">
+      <p>← Select a result to view Darwin Core details</p>
+    </div>
+
+  </section>
+</main>
+
+<script>
+"use strict";
+(function () {
+
+  /* ── CONFIG ──────────────────────────────────────────────────────── */
+  const CONFIG = {
+    API_BASE:   "https://www.marinespecies.org/rest",
+    TIMEOUT_MS: 10000,
+    WORMS_URL:  "https://www.marinespecies.org/aphia.php?p=taxdetails&id=",
+    /** Ordered list of Darwin Core fields → WoRMS field mapping */
+    DWC_FIELDS: [
+      { label: "Scientific Name",            dwc: "scientificName",           worms: "scientificname",  italic: true  },
+      { label: "Authorship",                 dwc: "scientificNameAuthorship", worms: "authority"                      },
+      { label: "Taxon Rank",                 dwc: "taxonRank",                worms: "rank"                           },
+      { label: "Kingdom",                    dwc: "kingdom",                  worms: "kingdom"                        },
+      { label: "Phylum",                     dwc: "phylum",                   worms: "phylum"                         },
+      { label: "Class",                      dwc: "class",                    worms: "class"                          },
+      { label: "Order",                      dwc: "order",                    worms: "order"                          },
+      { label: "Family",                     dwc: "family",                   worms: "family"                         },
+      { label: "Genus",                      dwc: "genus",                    worms: "genus",           italic: true  },
+      { label: "Species",                    dwc: "species",                  worms: "_species",        italic: true  },
+      { label: "Taxonomic Status",           dwc: "taxonomicStatus",          worms: "status"                         },
+      { label: "Accepted Name Usage",        dwc: "acceptedNameUsage",        worms: "valid_name",      italic: true  },
+      { label: "Accepted Name Usage ID",     dwc: "acceptedNameUsageID",      worms: "valid_AphiaID"                  },
+      { label: "Scientific Name ID (LSID)",  dwc: "scientificNameID",         worms: "lsid"                           },
+      { label: "Taxon ID (AphiaID)",         dwc: "taxonID",                  worms: "AphiaID"                        },
+    ],
+  };
+
+  /* ── ApiService ──────────────────────────────────────────────────── */
+  const ApiService = {
+    /**
+     * Fetch WoRMS records for a given name string.
+     * @param {string} name
+     * @returns {Promise<object[]>} array of WoRMS records (may be empty)
+     */
+    async search(name) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), CONFIG.TIMEOUT_MS);
+      try {
+        const url = `${CONFIG.API_BASE}/AphiaRecordsByName/${encodeURIComponent(name)}?like=true&marine_only=true`;
+        const res = await fetch(url, {
+          signal: controller.signal,
+          headers: { Accept: "application/json" },
+        });
+        clearTimeout(timer);
+        if (res.status === 204) return [];
+        if (!res.ok) throw new Error(`API error: HTTP ${res.status}. Please try again.`);
+        const data = await res.json();
+        return Array.isArray(data) ? data : [];
+      } catch (err) {
+        clearTimeout(timer);
+        if (err.name === "AbortError") throw new Error("Request timed out after 10 seconds. Check your connection.");
+        if (err.message.startsWith("API error")) throw err;
+        throw new Error("Unable to connect to WoRMS. Check your internet connection.");
+      }
+    },
+  };
+
+  /* ── DarwinCoreMapper ────────────────────────────────────────────── */
+  const DarwinCoreMapper = {
+    /**
+     * Map a raw WoRMS record to a Darwin Core normalized object.
+     * @param {object} record  raw WoRMS API record
+     * @returns {object}       DwC-normalised record plus internal _AphiaID, _validAphiaID, _status
+     */
+    map(record) {
+      /** @type {object} */
+      const dwc = {};
+      for (const field of CONFIG.DWC_FIELDS) {
+        if (field.worms === "_species") {
+          // species field only populated for Species-rank records
+          dwc[field.dwc] = (record.rank === "Species") ? (record.scientificname || "") : "";
+        } else {
+          dwc[field.dwc] = record[field.worms] ?? "";
+        }
+      }
+      // Internal helpers (not exported to CSV)
+      dwc._AphiaID      = record.AphiaID;
+      dwc._validAphiaID = record.valid_AphiaID;
+      dwc._status       = record.status;
+      return dwc;
+    },
+  };
+
+  /* ── CsvExporter ─────────────────────────────────────────────────── */
+  const CsvExporter = {
+    /**
+     * Trigger download of all mapped records as a Darwin Core CSV.
+     * @param {object[]} records  array of DwC-mapped objects
+     */
+    export(records) {
+      const headers = CONFIG.DWC_FIELDS.map((f) => f.dwc);
+      /** @param {unknown} v */
+      const escape = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+      const rows = [
+        headers.join(","),
+        ...records.map((r) => headers.map((h) => escape(r[h])).join(",")),
+      ];
+      const blob = new Blob([rows.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href     = url;
+      a.download = "phytoplankton_darwincore.csv";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    },
+  };
+
+  /* ── Renderer ────────────────────────────────────────────────────── */
+  const Renderer = {
+    /* Elements */
+    $statusBar:    /** @type {HTMLElement} */ (document.getElementById("status-bar")),
+    $searchBtn:    /** @type {HTMLButtonElement} */ (document.getElementById("search-btn")),
+    $resultsZone:  /** @type {HTMLElement} */ (document.getElementById("results-zone")),
+    $resultList:   /** @type {HTMLElement} */ (document.getElementById("result-list")),
+    $countLabel:   /** @type {HTMLElement} */ (document.getElementById("result-count-label")),
+    $exportBtn:    /** @type {HTMLElement} */ (document.getElementById("export-btn")),
+    $detailPanel:  /** @type {HTMLElement} */ (document.getElementById("detail-panel")),
+    $emptyDetail:  /** @type {HTMLElement} */ (document.getElementById("empty-detail")),
+    $detailName:   /** @type {HTMLElement} */ (document.getElementById("detail-name")),
+    $detailAuth:   /** @type {HTMLElement} */ (document.getElementById("detail-authorship")),
+    $wormsLink:    /** @type {HTMLAnchorElement} */ (document.getElementById("worms-link")),
+    $synonymNote:  /** @type {HTMLElement} */ (document.getElementById("synonym-note")),
+    $taxTable:     /** @type {HTMLElement} */ (document.getElementById("taxonomy-table")),
+
+    /** Show loading spinner in status bar, disable search button. */
+    showLoading() {
+      this.$searchBtn.disabled = true;
+      this.$statusBar.innerHTML = "";
+      const row = document.createElement("div");
+      row.className = "loading-row";
+      const spinner = document.createElement("div");
+      spinner.className = "spinner";
+      const txt = document.createElement("span");
+      txt.textContent = "Searching WoRMS database…";
+      row.appendChild(spinner);
+      row.appendChild(txt);
+      this.$statusBar.appendChild(row);
+    },
+
+    /** Show an error message in status bar. @param {string} message */
+    showError(message) {
+      this.$searchBtn.disabled = false;
+      this.$statusBar.innerHTML = "";
+      const div = document.createElement("div");
+      div.className = "error-msg";
+      div.innerHTML = `<span>⚠</span>`;
+      const span = document.createElement("span");
+      span.textContent = message;
+      div.appendChild(span);
+      this.$statusBar.appendChild(div);
+    },
+
+    /** Clear status bar and re-enable search button. */
+    clearStatus() {
+      this.$searchBtn.disabled = false;
+      this.$statusBar.innerHTML = "";
+    },
+
+    /** @param {string} status  raw WoRMS status string */
+    _statusBadgeClass(status) {
+      const s = (status || "").toLowerCase();
+      if (s === "accepted")   return "badge badge-accepted";
+      if (s === "synonym")    return "badge badge-synonym";
+      if (s.includes("nomen")) return "badge badge-nomen";
+      return "badge badge-unaccepted";
+    },
+
+    /**
+     * Render the result list.
+     * @param {object[]} mapped        DwC-mapped records
+     * @param {function(number): void} onSelect  callback with index
+     */
+    renderResultList(mapped, onSelect) {
+      this.$resultList.innerHTML = "";
+      this.$countLabel.textContent = `Results (${mapped.length})`;
+      this.$exportBtn.hidden = false;
+
+      mapped.forEach((rec, idx) => {
+        const li = document.createElement("li");
+        li.className = "result-item";
+        li.setAttribute("role", "option");
+        li.setAttribute("aria-selected", "false");
+        li.dataset.index = String(idx);
+
+        const nameEl = document.createElement("div");
+        nameEl.className = "result-sci-name";
+        nameEl.textContent = rec.scientificName || "(no name)";
+
+        const metaEl = document.createElement("div");
+        metaEl.className = "result-meta";
+        metaEl.textContent = rec.scientificNameAuthorship
+          ? rec.scientificNameAuthorship
+          : "\u00a0"; // nbsp to preserve height
+
+        const badgeRow = document.createElement("div");
+        badgeRow.className = "result-badges";
+
+        if (rec.taxonRank) {
+          const b = document.createElement("span");
+          b.className = "badge badge-rank";
+          b.textContent = rec.taxonRank;
+          badgeRow.appendChild(b);
+        }
+        if (rec._status) {
+          const b = document.createElement("span");
+          b.className = this._statusBadgeClass(rec._status);
+          b.textContent = rec._status;
+          badgeRow.appendChild(b);
+        }
+
+        li.appendChild(nameEl);
+        li.appendChild(metaEl);
+        li.appendChild(badgeRow);
+
+        li.addEventListener("click", () => onSelect(idx));
+        this.$resultList.appendChild(li);
+      });
+    },
+
+    /**
+     * Render the detail panel for one DwC record.
+     * @param {object} rec  DwC-mapped record
+     */
+    renderDetail(rec) {
+      // Header
+      this.$detailName.textContent = rec.scientificName || "";
+      this.$detailAuth.textContent = rec.scientificNameAuthorship
+        ? `${rec.scientificNameAuthorship}`
+        : "";
+      this.$wormsLink.href = `${CONFIG.WORMS_URL}${rec._AphiaID}`;
+
+      // Synonym note
+      const isSynonym =
+        rec._status && rec._status.toLowerCase() !== "accepted" && rec.acceptedNameUsage;
+      if (isSynonym) {
+        this.$synonymNote.hidden = false;
+        const acceptedLink = `<a href="${CONFIG.WORMS_URL}${rec._validAphiaID}" target="_blank" rel="noopener">${rec.acceptedNameUsage}</a>`;
+        this.$synonymNote.innerHTML =
+          `⚠ This name is <strong>${rec._status}</strong>. Accepted name: ${acceptedLink} (AphiaID: ${rec._validAphiaID})`;
+      } else {
+        this.$synonymNote.hidden = true;
+      }
+
+      // Taxonomy table
+      this.$taxTable.innerHTML = "";
+      for (const field of CONFIG.DWC_FIELDS) {
+        const val = rec[field.dwc];
+
+        const dt = document.createElement("dt");
+        dt.textContent = field.label;
+
+        const dd = document.createElement("dd");
+
+        if (!val && val !== 0) {
+          dd.className = "dd-empty";
+          dd.textContent = "—";
+        } else if (field.dwc === "taxonID" || field.dwc === "acceptedNameUsageID") {
+          // Make AphiaIDs clickable links
+          const a = document.createElement("a");
+          a.href    = `${CONFIG.WORMS_URL}${val}`;
+          a.target  = "_blank";
+          a.rel     = "noopener noreferrer";
+          a.className = "dd-link";
+          a.textContent = String(val);
+          dd.appendChild(a);
+        } else if (field.dwc === "scientificNameID") {
+          // LSID - display as text (very long)
+          dd.textContent = String(val);
+          dd.style.fontSize = "0.78rem";
+          dd.style.wordBreak = "break-all";
+        } else {
+          if (field.italic) dd.className = "dd-italic";
+          dd.textContent = String(val);
+        }
+
+        this.$taxTable.appendChild(dt);
+        this.$taxTable.appendChild(dd);
+      }
+
+      // Show/hide panels
+      this.$detailPanel.hidden = false;
+      this.$emptyDetail.hidden = true;
+    },
+
+    /** Highlight selected item in result list. @param {number} index */
+    highlightSelected(index) {
+      this.$resultList.querySelectorAll(".result-item").forEach((li, i) => {
+        const selected = i === index;
+        li.classList.toggle("selected", selected);
+        li.setAttribute("aria-selected", String(selected));
+      });
+    },
+
+    showResultsZone()  { this.$resultsZone.hidden = false; },
+    hideResultsZone()  {
+      this.$resultsZone.hidden = true;
+      this.$detailPanel.hidden = true;
+      this.$emptyDetail.hidden = false;
+      this.$exportBtn.hidden = true;
+    },
+  };
+
+  /* ── App ─────────────────────────────────────────────────────────── */
+  const App = {
+    state: {
+      /** @type {object[]} */
+      mappedRecords: [],
+      selectedIndex: /** @type {number|null} */ (null),
+    },
+
+    init() {
+      document.getElementById("search-form").addEventListener("submit", (e) => {
+        e.preventDefault();
+        this.handleSearch();
+      });
+
+      document.getElementById("export-btn").addEventListener("click", () => {
+        if (this.state.mappedRecords.length) {
+          CsvExporter.export(this.state.mappedRecords);
+        }
+      });
+
+      // Focus input on load
+      document.getElementById("species-input").focus();
+    },
+
+    async handleSearch() {
+      const query = /** @type {HTMLInputElement} */ (document.getElementById("species-input")).value.trim();
+      if (!query) return;
+
+      Renderer.showLoading();
+      Renderer.hideResultsZone();
+      this.state.mappedRecords = [];
+      this.state.selectedIndex = null;
+
+      try {
+        const raw = await ApiService.search(query);
+
+        if (!raw.length) {
+          Renderer.showError(`No marine species found matching "${query}" in the WoRMS database.`);
+          return;
+        }
+
+        this.state.mappedRecords = raw.map(DarwinCoreMapper.map);
+        Renderer.clearStatus();
+        Renderer.renderResultList(this.state.mappedRecords, (idx) => this.selectRecord(idx));
+        Renderer.showResultsZone();
+
+        // Auto-select if only one result
+        if (this.state.mappedRecords.length === 1) {
+          this.selectRecord(0);
+        }
+
+      } catch (err) {
+        Renderer.showError(/** @type {Error} */ (err).message);
+      }
+    },
+
+    /** @param {number} index */
+    selectRecord(index) {
+      this.state.selectedIndex = index;
+      Renderer.highlightSelected(index);
+      Renderer.renderDetail(this.state.mappedRecords[index]);
+    },
+  };
+
+  App.init();
+
+})();
+</script>
+</body>
+</html>
